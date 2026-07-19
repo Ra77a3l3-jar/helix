@@ -9,6 +9,7 @@ use helix_core::{
         TreeSitterQueryLoader, TreeSitterSyntax, TreeSitterTree,
     },
     find_workspace, graphemes,
+    line_ending::line_end_char_index,
     syntax::{
         self,
         config::{
@@ -4017,6 +4018,7 @@ fn load_misc_api(engine: &mut Engine, generate_sources: bool) {
         .register_fn_with_ctx(CTX, "await-callback", await_value)
         .register_fn_with_ctx(CTX, "add-inlay-hint", add_inlay_hint)
         .register_fn_with_ctx(CTX, "add-styled-inlay-hint", add_styled_inlay_hint)
+        .register_fn_with_ctx(CTX, "add-styled-line-inlay-hint", add_styled_line_inlay_hint)
         .register_fn_with_ctx(CTX, "remove-inlay-hint", remove_inlay_hint)
         .register_fn_with_ctx(CTX, "remove-inlay-hint-by-id", remove_inlay_hint_by_id)
         .register_fn("fuzzy-match", fuzzy_match);
@@ -5513,10 +5515,55 @@ pub fn add_styled_inlay_hint(
     segments: SteelVal,
 ) -> anyhow::Result<Option<(usize, usize)>> {
     let segments = steel_list_to_hint_segments(&segments)?;
+    Ok(add_styled_inlay_hint_impl(cx, char_index, segments))
+}
+
+// "add-styled-line-inlay-hint",
+pub fn add_styled_line_inlay_hint(
+    cx: &mut Context,
+    line: usize,
+    placement: SteelVal,
+    segments: SteelVal,
+) -> anyhow::Result<Option<(usize, usize)>> {
+    let segments = steel_list_to_hint_segments(&segments)?;
+    let at_start = match &placement {
+        SteelVal::SymbolV(placement) | SteelVal::StringV(placement) => match placement.as_str() {
+            "start" => true,
+            "end" => false,
+            other => anyhow::bail!("hint placement must be 'start or 'end, found: {}", other),
+        },
+        other => anyhow::bail!("hint placement must be 'start or 'end, found: {}", other),
+    };
 
     let view_id = cx.editor.tree.focus;
     if !cx.editor.tree.contains(view_id) {
         return Ok(None);
+    }
+    let doc_id = cx.editor.tree.get(view_id).doc;
+    let Some(doc) = cx.editor.documents.get(&doc_id) else {
+        return Ok(None);
+    };
+    let text = doc.text().slice(..);
+    if line >= text.len_lines() {
+        return Ok(None);
+    }
+    let char_index = if at_start {
+        text.line_to_char(line)
+    } else {
+        line_end_char_index(&text, line)
+    };
+
+    Ok(add_styled_inlay_hint_impl(cx, char_index, segments))
+}
+
+fn add_styled_inlay_hint_impl(
+    cx: &mut Context,
+    char_index: usize,
+    segments: Vec<(String, Option<helix_view::theme::Style>)>,
+) -> Option<(usize, usize)> {
+    let view_id = cx.editor.tree.focus;
+    if !cx.editor.tree.contains(view_id) {
+        return None;
     }
 
     // register the styles as theme highlights before borrowing the document
@@ -5538,9 +5585,7 @@ pub fn add_styled_inlay_hint(
 
     let view = cx.editor.tree.get(view_id);
     let doc_id = view.doc;
-    let Some(doc) = cx.editor.documents.get_mut(&doc_id) else {
-        return Ok(None);
-    };
+    let doc = cx.editor.documents.get_mut(&doc_id)?;
     let mut new_inlay_hints = doc.inlay_hints(view_id).cloned().unwrap_or_else(|| {
         let doc_text = doc.text();
         let len_lines = doc_text.len_lines();
@@ -5566,7 +5611,7 @@ pub fn add_styled_inlay_hint(
     let id = new_inlay_hints.id;
     doc.set_inlay_hints(view_id, new_inlay_hints);
 
-    Ok(Some((id.first_line, id.last_line)))
+    Some((id.first_line, id.last_line))
 }
 
 // "add-inlay-hint",
