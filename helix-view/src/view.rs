@@ -474,6 +474,7 @@ impl View {
             other_inlay_hints,
             padding_before_inlay_hints,
             padding_after_inlay_hints,
+            styled_inlay_hints,
         }) = doc.inlay_hints.get(&self.id)
         {
             let type_style = theme.and_then(|t| t.find_highlight("ui.virtual.inlay-hint.type"));
@@ -488,8 +489,13 @@ impl View {
                 .add_inline_annotations(padding_before_inlay_hints, None)
                 .add_inline_annotations(type_inlay_hints, type_style)
                 .add_inline_annotations(parameter_inlay_hints, parameter_style)
-                .add_inline_annotations(other_inlay_hints, other_style)
-                .add_inline_annotations(padding_after_inlay_hints, None);
+                .add_inline_annotations(other_inlay_hints, other_style);
+            // styled hints carry their own highlight so each one is its own layer
+            for (annotation, highlight) in styled_inlay_hints {
+                text_annotations
+                    .add_inline_annotations(std::slice::from_ref(annotation), *highlight);
+            }
+            text_annotations.add_inline_annotations(padding_after_inlay_hints, None);
         };
         let config = doc.config.load();
 

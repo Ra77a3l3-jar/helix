@@ -429,8 +429,28 @@ impl Theme {
         if let Some((red, green, blue)) = Self::decode_rgb_highlight(highlight) {
             Style::new().fg(Color::Rgb(red, green, blue))
         } else {
-            self.highlights[highlight.idx()]
+            // runtime registered theme can outlive a theme switch,
+            // rendering them unstyled instead of giving panic
+            self.highlights
+                .get(highlight.idx())
+                .copied()
+                .unwrap_or_default()
         }
+    }
+
+    /// Registers `style` under `scope` as a highlight so that runtime added
+    /// virtual text can carry arbitrary styles. Returns the already registered
+    /// `Highlight` when the scope is known.
+    pub fn ensure_highlight(&mut self, scope: &str, style: Style) -> Highlight {
+        if let Some(highlight) = self.scope_index.get(scope) {
+            return *highlight;
+        }
+        let highlight = Highlight::new(self.highlights.len() as u32);
+        self.styles.insert(scope.to_owned(), style);
+        self.scopes.push(scope.to_owned());
+        self.highlights.push(style);
+        self.scope_index.insert(scope.to_owned(), highlight);
+        highlight
     }
 
     #[inline]
