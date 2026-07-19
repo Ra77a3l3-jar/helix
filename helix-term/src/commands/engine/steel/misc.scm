@@ -305,6 +305,25 @@
 ;;
 (define add-styled-inlay-hint helix.add-styled-inlay-hint)
 
+(provide add-styled-line-inlay-hint)
+;;@doc
+;;
+;;Adds a styled inlay hint at the start or at the end of the given line, so the
+;;hint can come before or after the line text. See add-styled-inlay-hint for the
+;;segments format. The line is 0 indexed. Returns the (first-line, last-line)
+;;list associated with this snapshot of the inlay hints, use it with
+;;remove-inlay-hint-by-id.
+;;
+;;```scheme
+;;(add-styled-line-inlay-hint line placement segments) -> (list int? int?)
+;;```
+;;
+;;line : int?
+;;placement : (or 'start 'end)
+;;segments : (listof (list string? (or Style? #f)))
+;;
+(define add-styled-line-inlay-hint helix.add-styled-line-inlay-hint)
+
 (provide remove-inlay-hint)
 ;;@doc
 ;;
