@@ -300,6 +300,12 @@ pub struct DocumentInlayHints {
     /// added first, then the regular inlay hints, then the `after` padding.
     pub padding_before_inlay_hints: Vec<InlineAnnotation>,
     pub padding_after_inlay_hints: Vec<InlineAnnotation>,
+
+    /// Hints that carry their own highlight, allowing a
+    /// different style (fg, bg, modifiers) per annotation. Each entry is
+    /// rendered as its own annotation layer so the segments of a single
+    /// hint can each have their own colors.
+    pub styled_inlay_hints: Vec<(InlineAnnotation, Option<syntax::Highlight>)>,
 }
 
 impl DocumentInlayHints {
@@ -312,6 +318,7 @@ impl DocumentInlayHints {
             other_inlay_hints: Vec::new(),
             padding_before_inlay_hints: Vec::new(),
             padding_after_inlay_hints: Vec::new(),
+            styled_inlay_hints: Vec::new(),
         }
     }
 }
@@ -1599,6 +1606,7 @@ impl Document {
                 other_inlay_hints,
                 padding_before_inlay_hints,
                 padding_after_inlay_hints,
+                styled_inlay_hints,
             } = text_annotation;
 
             apply_inlay_hint_changes(padding_before_inlay_hints);
@@ -1606,6 +1614,11 @@ impl Document {
             apply_inlay_hint_changes(parameter_inlay_hints);
             apply_inlay_hint_changes(other_inlay_hints);
             apply_inlay_hint_changes(padding_after_inlay_hints);
+            changes.update_positions(
+                styled_inlay_hints
+                    .iter_mut()
+                    .map(|(annotation, _)| (&mut annotation.char_idx, Assoc::After)),
+            );
         }
 
         for highlights in self.document_highlights.values_mut() {
