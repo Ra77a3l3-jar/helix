@@ -21,6 +21,7 @@ use unicode_segmentation::{Graphemes, UnicodeSegmentation};
 
 use helix_stdx::rope::{RopeGraphemes, RopeSliceExt};
 
+use crate::chars::char_is_line_ending;
 use crate::graphemes::{Grapheme, GraphemeStr};
 use crate::syntax::Highlight;
 use crate::text_annotations::TextAnnotations;
@@ -95,6 +96,8 @@ impl FormattedGrapheme<'_> {
 struct GraphemeWithSource<'a> {
     grapheme: Grapheme<'a>,
     source: GraphemeSource,
+    /// Marks a line end grapheme and the annotations rendered after it
+    after_line_end: bool,
 }
 
 impl<'a> GraphemeWithSource<'a> {
@@ -107,12 +110,14 @@ impl<'a> GraphemeWithSource<'a> {
         GraphemeWithSource {
             grapheme: Grapheme::new(g, visual_x, tab_width),
             source,
+            after_line_end: false,
         }
     }
     fn placeholder() -> Self {
         GraphemeWithSource {
             grapheme: Grapheme::Other { g: " ".into() },
             source: GraphemeSource::Document { codepoints: 0 },
+            after_line_end: false,
         }
     }
 
@@ -185,6 +190,13 @@ pub struct DocumentFormatter<'t> {
 
     inline_annotation_graphemes: Option<(Graphemes<'t>, Option<Highlight>)>,
 
+    /// The full document text, used to look ahead at line ends
+    text: RopeSlice<'t>,
+    /// Anchor of line end annotations still being emitted
+    eol_annotation_anchor: Option<usize>,
+    /// Row advance deferred until the line end annotations are emitted
+    pending_eol_row_advance: bool,
+
     // softwrap specific
     /// The indentation of the current line
     /// Is set to `None` if the indentation level is not yet known
@@ -229,6 +241,9 @@ impl<'t> DocumentFormatter<'t> {
             word_i: 0,
             line_pos: block_line_idx,
             inline_annotation_graphemes: None,
+            text,
+            eol_annotation_anchor: None,
+            pending_eol_row_advance: false,
         }
     }
 
@@ -259,35 +274,68 @@ impl<'t> DocumentFormatter<'t> {
     }
 
     fn advance_grapheme(&mut self, col: usize, char_pos: usize) -> Option<GraphemeWithSource<'t>> {
-        let (grapheme, source) =
-            if let Some((grapheme, highlight)) = self.next_inline_annotation_grapheme(char_pos) {
-                (grapheme.into(), GraphemeSource::VirtualText { highlight })
-            } else if let Some(grapheme) = self.graphemes.next() {
-                let codepoints = grapheme.len_chars() as u32;
+        // drain the annotations of an already emitted line end
+        if let Some(anchor) = self.eol_annotation_anchor {
+            if let Some((grapheme, highlight)) = self.next_inline_annotation_grapheme(anchor) {
+                let mut grapheme = GraphemeWithSource::new(
+                    grapheme.into(),
+                    col,
+                    self.text_fmt.tab_width,
+                    GraphemeSource::VirtualText { highlight },
+                );
+                grapheme.after_line_end = true;
+                return Some(grapheme);
+            }
+            self.eol_annotation_anchor = None;
+        }
 
-                let overlay = self.annotations.overlay_at(char_pos);
-                let grapheme = match overlay {
-                    Some((overlay, _)) => overlay.grapheme.as_str().into(),
-                    None => Cow::from(grapheme).into(),
-                };
+        // annotations anchored at a line end render after it so a cursor
+        // at the end of the actual text stays in front of the virtual text
+        let line_end_annotations =
+            self.at_line_end(char_pos) && self.annotations.has_inline_annotation_at(char_pos);
 
-                (grapheme, GraphemeSource::Document { codepoints })
-            } else {
-                if self.exhausted {
-                    return None;
-                }
-                self.exhausted = true;
-                // EOF grapheme is required for rendering
-                // and correct position computations
-                return Some(GraphemeWithSource {
-                    grapheme: Grapheme::Other { g: " ".into() },
-                    source: GraphemeSource::Document { codepoints: 0 },
-                });
+        let annotation = if line_end_annotations {
+            self.eol_annotation_anchor = Some(char_pos);
+            None
+        } else {
+            self.next_inline_annotation_grapheme(char_pos)
+        };
+
+        let (grapheme, source) = if let Some((grapheme, highlight)) = annotation {
+            (grapheme.into(), GraphemeSource::VirtualText { highlight })
+        } else if let Some(grapheme) = self.graphemes.next() {
+            let codepoints = grapheme.len_chars() as u32;
+
+            let overlay = self.annotations.overlay_at(char_pos);
+            let grapheme = match overlay {
+                Some((overlay, _)) => overlay.grapheme.as_str().into(),
+                None => Cow::from(grapheme).into(),
             };
 
-        let grapheme = GraphemeWithSource::new(grapheme, col, self.text_fmt.tab_width, source);
+            (grapheme, GraphemeSource::Document { codepoints })
+        } else {
+            if self.exhausted {
+                return None;
+            }
+            self.exhausted = true;
+            // EOF grapheme is required for rendering
+            // and correct position computations
+            return Some(GraphemeWithSource {
+                grapheme: Grapheme::Other { g: " ".into() },
+                source: GraphemeSource::Document { codepoints: 0 },
+                after_line_end: line_end_annotations,
+            });
+        };
+
+        let mut grapheme = GraphemeWithSource::new(grapheme, col, self.text_fmt.tab_width, source);
+        grapheme.after_line_end = line_end_annotations;
 
         Some(grapheme)
+    }
+
+    /// Whether the grapheme at `char_pos` is a line break or the end of the text
+    fn at_line_end(&self, char_pos: usize) -> bool {
+        char_pos >= self.text.len_chars() || char_is_line_ending(self.text.char(char_pos))
     }
 
     /// Move a word to the next visual line
@@ -447,6 +495,18 @@ impl<'t> Iterator for DocumentFormatter<'t> {
         } else {
             self.advance_grapheme(self.visual_pos.col, self.char_pos)?
         };
+        let after_line_end = grapheme.after_line_end;
+
+        // perform the row advance deferred by the previous line end
+        if self.pending_eol_row_advance && !after_line_end {
+            let virtual_lines =
+                self.annotations
+                    .virtual_lines_at(self.char_pos, self.visual_pos, self.line_pos);
+            self.visual_pos.row += 1 + virtual_lines;
+            self.visual_pos.col = 0;
+            self.line_pos += 1;
+            self.pending_eol_row_advance = false;
+        }
 
         let grapheme = FormattedGrapheme {
             raw: grapheme.grapheme,
@@ -461,15 +521,21 @@ impl<'t> Iterator for DocumentFormatter<'t> {
             self.annotations.process_virtual_text_anchors(&grapheme);
         }
         if grapheme.raw == Grapheme::Newline {
-            // move to end of newline char
-            self.visual_pos.col += 1;
-            let virtual_lines =
-                self.annotations
-                    .virtual_lines_at(self.char_pos, self.visual_pos, self.line_pos);
-            self.visual_pos.row += 1 + virtual_lines;
-            self.visual_pos.col = 0;
-            if !grapheme.is_virtual() {
-                self.line_pos += 1;
+            if after_line_end {
+                // annotations still follow on this row, defer the row advance
+                self.visual_pos.col += 1;
+                self.pending_eol_row_advance = true;
+            } else {
+                // move to end of newline char
+                self.visual_pos.col += 1;
+                let virtual_lines =
+                    self.annotations
+                        .virtual_lines_at(self.char_pos, self.visual_pos, self.line_pos);
+                self.visual_pos.row += 1 + virtual_lines;
+                self.visual_pos.col = 0;
+                if !grapheme.is_virtual() {
+                    self.line_pos += 1;
+                }
             }
         } else {
             self.visual_pos.col += grapheme.width();
