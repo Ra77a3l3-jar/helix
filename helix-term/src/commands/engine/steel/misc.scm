@@ -286,6 +286,25 @@
 ;;
 (define add-inlay-hint helix.add-inlay-hint)
 
+(provide add-styled-inlay-hint)
+;;@doc
+;;
+;;Adds an inlay hint at the given character index where the text is given as a list
+;;of (text style) segments, each rendered with its own style. This allows different
+;;fg and bg colors and modifiers per segment, down to a single character. Pass #f as
+;;the style of a segment to render it with the default text style. Returns the
+;;(first-line, last-line) list associated with this snapshot of the inlay hints,
+;;use it with remove-inlay-hint-by-id.
+;;
+;;```scheme
+;;(add-styled-inlay-hint char-index segments) -> (list int? int?)
+;;```
+;;
+;;char-index : int?
+;;segments : (listof (list string? (or Style? #f)))
+;;
+(define add-styled-inlay-hint helix.add-styled-inlay-hint)
+
 (provide remove-inlay-hint)
 ;;@doc
 ;;

@@ -48,7 +48,10 @@ use steel::{
     gc::{unsafe_erased_pointers::CustomReference, ShareableMut},
     parser::interner::InternedString,
     rerrs::ErrorKind,
-    rvals::{as_underlying_type, AsRefMutSteelVal, FromSteelVal, IntoSteelVal, SteelString},
+    rvals::{
+        as_underlying_type, AsRefMutSteelVal, AsRefSteelVal, FromSteelVal, IntoSteelVal,
+        SteelString,
+    },
     steel_vm::{
         engine::Engine, mutex_lock, mutex_unlock, register_fn::RegisterFn, ThreadStateController,
     },
@@ -4037,6 +4040,7 @@ fn load_misc_api(engine: &mut Engine, generate_sources: bool) {
         .register_fn_with_ctx(CTX, "helix-await-callback", await_value)
         .register_fn_with_ctx(CTX, "await-callback", await_value)
         .register_fn_with_ctx(CTX, "add-inlay-hint", add_inlay_hint)
+        .register_fn_with_ctx(CTX, "add-styled-inlay-hint", add_styled_inlay_hint)
         .register_fn_with_ctx(CTX, "remove-inlay-hint", remove_inlay_hint)
         .register_fn_with_ctx(CTX, "remove-inlay-hint-by-id", remove_inlay_hint_by_id)
         .register_fn("fuzzy-match", fuzzy_match);
@@ -5488,6 +5492,107 @@ fn create_callback<T: TryInto<SteelVal, Error = SteelErr> + 'static>(
     Ok(())
 }
 
+fn steel_list_to_hint_segments(
+    val: &SteelVal,
+) -> anyhow::Result<Vec<(String, Option<helix_view::theme::Style>)>> {
+    let SteelVal::ListV(segments) = val else {
+        anyhow::bail!(
+            "add-styled-inlay-hint expects a list of (text style) segments, found: {}",
+            val
+        );
+    };
+
+    segments
+        .iter()
+        .map(|segment| {
+            let SteelVal::ListV(pair) = segment else {
+                anyhow::bail!(
+                    "hint segment must be a (text style) list, found: {}",
+                    segment
+                );
+            };
+            let mut pair = pair.iter();
+            let (Some(text), Some(style)) = (pair.next(), pair.next()) else {
+                anyhow::bail!("hint segment must contain a text and a style");
+            };
+            let SteelVal::StringV(text) = text else {
+                anyhow::bail!("hint segment text must be a string, found: {}", text);
+            };
+            let style = match style {
+                SteelVal::BoolV(false) => None,
+                _ => Some(
+                    *helix_view::theme::Style::as_ref(style)
+                        .map_err(|err| anyhow::anyhow!("{}", err))?,
+                ),
+            };
+            Ok((text.to_string(), style))
+        })
+        .collect()
+}
+
+// "add-styled-inlay-hint",
+pub fn add_styled_inlay_hint(
+    cx: &mut Context,
+    char_index: usize,
+    segments: SteelVal,
+) -> anyhow::Result<Option<(usize, usize)>> {
+    let segments = steel_list_to_hint_segments(&segments)?;
+
+    let view_id = cx.editor.tree.focus;
+    if !cx.editor.tree.contains(view_id) {
+        return Ok(None);
+    }
+
+    // register the styles as theme highlights before borrowing the document
+    let mut hints: Vec<(InlineAnnotation, Option<helix_core::syntax::Highlight>)> = Vec::new();
+    for (text, style) in segments {
+        let highlight = style.map(|style| {
+            // the scope name encodes the style so identical styles reuse a highlight
+            let scope = format!("steel.style.{:?}", style);
+            cx.editor.theme.ensure_highlight(&scope, style)
+        });
+        match hints.last_mut() {
+            // adjacent segments with the same style collapse into one annotation
+            Some((annotation, existing)) if *existing == highlight => {
+                annotation.text.push_str(&text);
+            }
+            _ => hints.push((InlineAnnotation::new(char_index, text), highlight)),
+        }
+    }
+
+    let view = cx.editor.tree.get(view_id);
+    let doc_id = view.doc;
+    let Some(doc) = cx.editor.documents.get_mut(&doc_id) else {
+        return Ok(None);
+    };
+    let mut new_inlay_hints = doc.inlay_hints(view_id).cloned().unwrap_or_else(|| {
+        let doc_text = doc.text();
+        let len_lines = doc_text.len_lines();
+
+        let view_height = view.inner_height();
+        let first_visible_line =
+            doc_text.char_to_line(doc.view_offset(view_id).anchor.min(doc_text.len_chars()));
+        let first_line = first_visible_line.saturating_sub(view_height);
+        let last_line = first_visible_line
+            .saturating_add(view_height.saturating_mul(2))
+            .min(len_lines);
+
+        let new_doc_inlay_hints_id = DocumentInlayHintsId {
+            first_line,
+            last_line,
+        };
+
+        DocumentInlayHints::empty_with_id(new_doc_inlay_hints_id)
+    });
+
+    new_inlay_hints.styled_inlay_hints.extend(hints);
+
+    let id = new_inlay_hints.id;
+    doc.set_inlay_hints(view_id, new_inlay_hints);
+
+    Ok(Some((id.first_line, id.last_line)))
+}
+
 // "add-inlay-hint",
 pub fn add_inlay_hint(
     cx: &mut Context,
@@ -5602,6 +5707,9 @@ pub fn remove_inlay_hint(cx: &mut Context, char_index: usize, _completion: Steel
     new_inlay_hints
         .other_inlay_hints
         .retain(|x| x.char_idx != char_index);
+    new_inlay_hints
+        .styled_inlay_hints
+        .retain(|(x, _)| x.char_idx != char_index);
     doc.set_inlay_hints(view_id, new_inlay_hints);
     true
 }
