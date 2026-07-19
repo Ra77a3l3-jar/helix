@@ -370,6 +370,15 @@ impl<'a> TextAnnotations<'a> {
         self.line_annotations.clear();
     }
 
+    pub(crate) fn has_inline_annotation_at(&self, char_idx: usize) -> bool {
+        self.inline_annotations.iter().any(|layer| {
+            layer
+                .annotations
+                .get(layer.current_index.get())
+                .is_some_and(|annotation| annotation.char_idx == char_idx)
+        })
+    }
+
     pub(crate) fn next_inline_annotation_at(
         &self,
         char_idx: usize,
