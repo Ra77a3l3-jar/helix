@@ -1,5 +1,5 @@
 {
-  description = "A post-modern text editor.";
+  description = "A post-modern text editor with Steel plugin support.";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";

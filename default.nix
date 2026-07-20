@@ -55,6 +55,10 @@ in
 
     buildType = "release";
 
+    # explicit so hx keeps plugin support even if the branch's
+    # default feature set changes
+    cargoBuildFlags = ["--package" "helix-term" "--features" "steel,git"];
+
     name = with builtins; (fromTOML (readFile ./helix-term/Cargo.toml)).package.name;
     src = fs.toSource {
       root = ./.;
