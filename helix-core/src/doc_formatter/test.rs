@@ -13,6 +13,8 @@ impl TextFormat {
             // use a prime number to allow lining up too often with repeat
             viewport_width: 17,
             soft_wrap_at_text_width: false,
+            fold_marker: "⋯".into(),
+            fold_marker_highlight: None,
         }
     }
 }

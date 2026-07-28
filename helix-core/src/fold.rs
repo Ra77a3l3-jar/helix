@@ -24,9 +24,21 @@ impl Fold {
     pub fn is_empty(&self) -> bool {
         self.start_char >= self.end_char
     }
+
+    /// Does this fold fully wrap `other`? (equal ranges count too)
+    pub fn encloses(&self, other: &Fold) -> bool {
+        self.start_char <= other.start_char && other.end_char <= self.end_char
+    }
+
+    /// Do the folds overlap without one wrapping the other? that's a crossing,
+    /// which isn't allowed. nested or separate folds are fine.
+    pub fn crosses(&self, other: &Fold) -> bool {
+        let overlap = self.start_char < other.end_char && other.start_char < self.end_char;
+        overlap && !self.encloses(other) && !other.encloses(self)
+    }
 }
 
-/// All the folds for one document. Sorted by start, and they never overlap.
+/// All the folds for one document. Sorted outer-first; they can nest but not cross.
 #[derive(Debug, Clone, Default)]
 pub struct Folds {
     folds: Vec<Fold>,
@@ -58,14 +70,20 @@ impl Folds {
         self.folds.iter().find(|f| f.contains(char_idx))
     }
 
-    /// Add a fold. If it overlaps an existing one, throw the old one out.
+    /// Add a fold. Nested folds (inside or around it) stay; ones that cross it
+    /// get dropped, and exact dupes are ignored. Kept sorted outer-first.
     pub fn insert(&mut self, fold: Fold) {
         if fold.is_empty() {
             return;
         }
-        self.folds
-            .retain(|f| f.end_char <= fold.start_char || f.start_char >= fold.end_char);
-        let idx = self.folds.partition_point(|f| f.start_char < fold.start_char);
+        if self.folds.contains(&fold) {
+            return;
+        }
+        self.folds.retain(|f| !f.crosses(&fold));
+        let idx = self.folds.partition_point(|f| {
+            f.start_char < fold.start_char
+                || (f.start_char == fold.start_char && f.end_char > fold.end_char)
+        });
         self.folds.insert(idx, fold);
     }
 
@@ -87,7 +105,8 @@ impl Folds {
     /// nothing and sort again.
     pub fn prune(&mut self, text_len: usize) {
         self.folds.retain(|f| !f.is_empty() && f.start_char < text_len);
-        self.folds.sort_by_key(|f| f.start_char);
+        self.folds
+            .sort_by(|a, b| a.start_char.cmp(&b.start_char).then(b.end_char.cmp(&a.end_char)));
     }
 }
 

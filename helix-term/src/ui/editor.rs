@@ -306,12 +306,19 @@ impl EditorView {
         // `height` visual rows can reach much further down the document. Extend
         // the range by every line a fold hides, so syntax highlighting still
         // covers everything that lands on screen (over-covering is harmless).
+        // folds are sorted outer-first; skip ones nested in a fold we already
+        // counted so we don't count their lines twice.
         let len_chars = text.len_chars();
         let mut hidden = 0usize;
+        let mut covered_end_char = 0usize;
         for f in folds.iter() {
+            if f.start_char < covered_end_char {
+                continue;
+            }
             let start_line = text.char_to_line(f.start_char.min(len_chars));
             let end_line = text.char_to_line(f.end_char.min(len_chars));
             hidden += end_line.saturating_sub(start_line);
+            covered_end_char = f.end_char;
         }
         let last_visible_line = (row + height as usize + hidden)
             .saturating_sub(1)
