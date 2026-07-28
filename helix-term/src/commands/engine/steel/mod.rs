@@ -1550,6 +1550,38 @@ fn load_editor_api(engine: &mut Engine, generate_sources: bool) {
         )
         .register_fn_with_ctx(CTX, "editor->text", document_id_to_text)
         .register_fn_with_ctx(CTX, "editor-document->path", document_path)
+        // folding hide lines when drawing without touching the text
+        .register_fn_with_ctx(
+            CTX,
+            "fold-lines!",
+            |cx: &mut Context, header_line: usize, last_line: usize| {
+                let (_view, doc) = current!(cx.editor);
+                doc.fold_lines(header_line, last_line);
+            },
+        )
+        .register_fn_with_ctx(
+            CTX,
+            "unfold-at-char!",
+            |cx: &mut Context, char_idx: usize| -> bool {
+                let (_view, doc) = current!(cx.editor);
+                doc.unfold_at(char_idx)
+            },
+        )
+        .register_fn_with_ctx(CTX, "unfold-all!", |cx: &mut Context| {
+            let (_view, doc) = current!(cx.editor);
+            doc.clear_folds();
+        })
+        .register_fn_with_ctx(CTX, "fold-count", |cx: &mut Context| -> usize {
+            let (_view, doc) = current!(cx.editor);
+            doc.folds().len()
+        })
+        .register_fn_with_ctx(CTX, "folds", |cx: &mut Context| -> Vec<Vec<usize>> {
+            let (_view, doc) = current!(cx.editor);
+            doc.folds()
+                .iter()
+                .map(|f| vec![f.start_char, f.end_char])
+                .collect()
+        })
         .register_fn_with_ctx(CTX, "register->value", cx_register_value)
         .register_fn_with_ctx(
             CTX,

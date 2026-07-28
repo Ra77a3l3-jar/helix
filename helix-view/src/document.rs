@@ -155,6 +155,8 @@ pub struct Document {
     pub(crate) document_highlights: HashMap<ViewId, DocumentHighlights>,
     /// LSP code action hints for each view.
     pub(crate) code_action_hints: HashSet<ViewId>,
+    /// Folds that hide lines when drawing, without touching the text.
+    pub(crate) folds: helix_core::fold::Folds,
     /// Set to `true` when the document is updated, reset to `false` on the next inlay hints
     /// update from the LSP
     pub inlay_hints_oudated: bool,
@@ -780,6 +782,7 @@ impl Document {
             jump_labels: HashMap::new(),
             document_highlights: HashMap::new(),
             code_action_hints: HashSet::new(),
+            folds: helix_core::fold::Folds::default(),
             color_swatches: None,
             document_links: Vec::new(),
             color_swatch_controller: TaskController::new(),
@@ -1643,6 +1646,18 @@ impl Document {
             highlights.ranges = updated;
         }
 
+        // move the folds along when an edit shifts everything around
+        for fold in self.folds.iter_mut() {
+            changes.update_positions(
+                [
+                    (&mut fold.start_char, Assoc::After),
+                    (&mut fold.end_char, Assoc::Before),
+                ]
+                .into_iter(),
+            );
+        }
+        self.folds.prune(self.text.len_chars());
+
         helix_event::dispatch(DocumentDidChange {
             doc: self,
             view: view_id,
@@ -2443,6 +2458,8 @@ impl Document {
             wrap_indicator_highlight: theme
                 .and_then(|theme| theme.find_highlight("ui.virtual.wrap")),
             soft_wrap_at_text_width,
+            fold_marker: "⋯".into(),
+            fold_marker_highlight: theme.and_then(|theme| theme.find_highlight("ui.virtual.fold")),
         }
     }
 
@@ -2508,6 +2525,32 @@ impl Document {
 
     pub fn code_action_hints(&self, view_id: ViewId) -> bool {
         self.code_action_hints.contains(&view_id)
+    }
+
+    pub fn folds(&self) -> &helix_core::fold::Folds {
+        &self.folds
+    }
+
+    /// Fold everything between the first and last line into `header {⋯}`.
+    pub fn fold_lines(&mut self, header_line: usize, last_line: usize) {
+        let text = self.text.slice(..);
+        if header_line >= last_line || last_line >= text.len_lines() {
+            return;
+        }
+        let start_char = helix_core::fold::line_end_char(text, header_line);
+        // stop at the start of the last line so its closing bracket still shows
+        let end_char = text.line_to_char(last_line);
+        self.folds
+            .insert(helix_core::fold::Fold::new(start_char, end_char));
+    }
+
+    /// Remove the fold on this char. Tells you if it actually removed one.
+    pub fn unfold_at(&mut self, char_idx: usize) -> bool {
+        self.folds.remove_at(char_idx)
+    }
+
+    pub fn clear_folds(&mut self) {
+        self.folds.clear();
     }
 
     pub fn code_action_controller(&mut self, view_id: ViewId) -> &mut TaskController {
