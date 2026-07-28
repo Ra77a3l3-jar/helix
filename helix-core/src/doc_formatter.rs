@@ -233,7 +233,16 @@ impl<'t> DocumentFormatter<'t> {
     ) -> Self {
         // TODO divide long lines into blocks to avoid bad performance for long lines
         let block_line_idx = text.char_to_line(char_idx.min(text.len_chars()));
-        let block_char_idx = text.line_to_char(block_line_idx);
+        let mut block_char_idx = text.line_to_char(block_line_idx);
+        // don't start drawing from inside a fold. jump back to the fold's header
+        // line (where the marker is), not forward past it. going backward keeps
+        // the walk in char_idx_at_visual_offset shrinking toward 0; going forward
+        // makes it grow instead and the loop spins forever (that was the freeze).
+        if let Some(fold) = annotations.fold_containing(block_char_idx) {
+            let header_line = text.char_to_line(fold.start_char.min(text.len_chars()));
+            block_char_idx = text.line_to_char(header_line);
+        }
+        let block_line_idx = text.char_to_line(block_char_idx);
         annotations.reset_pos(block_char_idx);
 
         DocumentFormatter {

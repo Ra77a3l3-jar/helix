@@ -327,6 +327,20 @@ impl<'a> TextAnnotations<'a> {
         (fold.start_char == char_idx).then_some(fold)
     }
 
+    /// Any folds attached? If so, vertical movement has to use the visual path.
+    pub fn has_folds(&self) -> bool {
+        !self.folds.is_empty()
+    }
+
+    /// The fold that hides `char_idx` (strictly inside it), so we don't start
+    /// drawing from the middle of a fold.
+    pub(crate) fn fold_containing(&self, char_idx: usize) -> Option<Fold> {
+        self.folds
+            .iter()
+            .copied()
+            .find(|f| f.start_char < char_idx && char_idx < f.end_char)
+    }
+
     pub fn collect_overlay_highlights(&self, char_range: Range<usize>) -> OverlayHighlights {
         let mut highlights = Vec::new();
         self.reset_pos(char_range.start);
