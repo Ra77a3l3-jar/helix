@@ -102,6 +102,8 @@ impl InlineDiagnosticsConfig {
             wrap_indicator_highlight: None,
             viewport_width: width,
             soft_wrap_at_text_width: true,
+            fold_marker: "⋯".into(),
+            fold_marker_highlight: None,
         }
     }
 }

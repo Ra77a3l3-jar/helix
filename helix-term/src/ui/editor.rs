@@ -297,11 +297,25 @@ impl EditorView {
         text: helix_core::RopeSlice,
         row: usize,
         height: u16,
+        folds: &helix_core::fold::Folds,
     ) -> std::ops::Range<usize> {
         // Calculate viewport byte ranges:
         // Saturating subs to make it inclusive zero indexing.
         let last_line = text.len_lines().saturating_sub(1);
-        let last_visible_line = (row + height as usize).saturating_sub(1).min(last_line);
+        // A fold collapses several document lines into one visual line, so
+        // `height` visual rows can reach much further down the document. Extend
+        // the range by every line a fold hides, so syntax highlighting still
+        // covers everything that lands on screen (over-covering is harmless).
+        let len_chars = text.len_chars();
+        let mut hidden = 0usize;
+        for f in folds.iter() {
+            let start_line = text.char_to_line(f.start_char.min(len_chars));
+            let end_line = text.char_to_line(f.end_char.min(len_chars));
+            hidden += end_line.saturating_sub(start_line);
+        }
+        let last_visible_line = (row + height as usize + hidden)
+            .saturating_sub(1)
+            .min(last_line);
         let start = text.line_to_byte(row.min(last_line));
         let end = text.line_to_byte(last_visible_line + 1);
 
@@ -320,7 +334,7 @@ impl EditorView {
         let syntax = doc.syntax()?;
         let text = doc.text().slice(..);
         let row = text.char_to_line(anchor.min(text.len_chars()));
-        let range = Self::viewport_byte_range(text, row, height);
+        let range = Self::viewport_byte_range(text, row, height, doc.folds());
         let range = range.start as u32..range.end as u32;
 
         let highlighter = syntax.highlighter(text, loader, range);
@@ -336,7 +350,7 @@ impl EditorView {
         let text = doc.text().slice(..);
         let row = text.char_to_line(anchor.min(text.len_chars()));
 
-        let mut range = Self::viewport_byte_range(text, row, height);
+        let mut range = Self::viewport_byte_range(text, row, height, doc.folds());
         range = text.byte_to_char(range.start)..text.byte_to_char(range.end);
 
         text_annotations.collect_overlay_highlights(range)
@@ -352,7 +366,7 @@ impl EditorView {
         let syntax = doc.syntax()?;
         let text = doc.text().slice(..);
         let row = text.char_to_line(anchor.min(text.len_chars()));
-        let visible_range = Self::viewport_byte_range(text, row, height);
+        let visible_range = Self::viewport_byte_range(text, row, height, doc.folds());
         let start = syntax::child_for_byte_range(
             &syntax.tree().root_node(),
             visible_range.start as u32..visible_range.end as u32,

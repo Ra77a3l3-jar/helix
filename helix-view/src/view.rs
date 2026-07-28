@@ -528,6 +528,7 @@ impl View {
             ));
         }
 
+        text_annotations.with_folds(doc.folds().as_slice());
         text_annotations
     }
 

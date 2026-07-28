@@ -2445,6 +2445,8 @@ impl Document {
             wrap_indicator_highlight: theme
                 .and_then(|theme| theme.find_highlight("ui.virtual.wrap")),
             soft_wrap_at_text_width,
+            fold_marker: "⋯".into(),
+            fold_marker_highlight: theme.and_then(|theme| theme.find_highlight("ui.virtual.fold")),
         }
     }
 

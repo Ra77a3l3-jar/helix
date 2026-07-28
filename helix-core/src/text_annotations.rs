@@ -5,6 +5,7 @@ use std::ops::Range;
 use std::ptr::NonNull;
 
 use crate::doc_formatter::FormattedGrapheme;
+use crate::fold::Fold;
 use crate::syntax::{Highlight, OverlayHighlights};
 use crate::{Position, Tendril};
 
@@ -279,6 +280,10 @@ pub struct TextAnnotations<'a> {
     inline_annotations: Vec<Layer<'a, InlineAnnotation, Option<Highlight>>>,
     overlays: Vec<Layer<'a, Overlay, Option<Highlight>>>,
     line_annotations: Vec<(Cell<usize>, RawBox<dyn LineAnnotation + 'a>)>,
+    /// Folds, sorted by `start_char` and non overlapping.
+    folds: &'a [Fold],
+    /// Index of the next fold whose start is `>=` the last queried position.
+    fold_cursor: Cell<usize>,
 }
 
 impl Debug for TextAnnotations<'_> {
@@ -298,6 +303,28 @@ impl<'a> TextAnnotations<'a> {
         for (next_anchor, layer) in &self.line_annotations {
             next_anchor.set(unsafe { layer.get().reset_pos(char_idx) });
         }
+        self.fold_cursor
+            .set(self.folds.partition_point(|f| f.start_char < char_idx));
+    }
+
+    /// Attach the document's folds. They must be sorted by `start_char` and non
+    /// overlapping.
+    pub fn with_folds(&mut self, folds: &'a [Fold]) -> &mut Self {
+        self.folds = folds;
+        self.fold_cursor.set(0);
+        self
+    }
+
+    /// The fold that starts exactly at `char_idx`, if any. Assumes queries come
+    /// in increasing order (like they do during a traversal).
+    pub(crate) fn fold_starting_at(&self, char_idx: usize) -> Option<Fold> {
+        let mut i = self.fold_cursor.get();
+        while i < self.folds.len() && self.folds[i].start_char < char_idx {
+            i += 1;
+        }
+        self.fold_cursor.set(i);
+        let fold = *self.folds.get(i)?;
+        (fold.start_char == char_idx).then_some(fold)
     }
 
     pub fn collect_overlay_highlights(&self, char_range: Range<usize>) -> OverlayHighlights {

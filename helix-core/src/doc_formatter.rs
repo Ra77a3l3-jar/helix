@@ -37,12 +37,24 @@ pub enum GraphemeSource {
     VirtualText {
         highlight: Option<Highlight>,
     },
+    /// A fold marker. It stands in for a hidden range: it draws like virtual
+    /// text but bumps the document char position by `codepoints` and the line
+    /// position by `lines`, so cursor mapping, scrolling and line numbers all
+    /// skip the hidden lines for free.
+    Fold {
+        highlight: Option<Highlight>,
+        codepoints: u32,
+        lines: u32,
+    },
 }
 
 impl GraphemeSource {
     /// Returns whether this grapheme is virtual inline text
     pub fn is_virtual(self) -> bool {
-        matches!(self, GraphemeSource::VirtualText { .. })
+        matches!(
+            self,
+            GraphemeSource::VirtualText { .. } | GraphemeSource::Fold { .. }
+        )
     }
 
     pub fn is_eof(self) -> bool {
@@ -53,6 +65,9 @@ impl GraphemeSource {
     pub fn doc_chars(self) -> usize {
         match self {
             GraphemeSource::Document { codepoints } => codepoints as usize,
+            // a fold marker stands in for the whole hidden range, so the char
+            // position jumps past it
+            GraphemeSource::Fold { codepoints, .. } => codepoints as usize,
             GraphemeSource::VirtualText { .. } => 0,
         }
     }
@@ -151,6 +166,9 @@ pub struct TextFormat {
     pub wrap_indicator_highlight: Option<Highlight>,
     pub viewport_width: u16,
     pub soft_wrap_at_text_width: bool,
+    /// The single grapheme drawn on a fold header where the hidden lines were.
+    pub fold_marker: Box<str>,
+    pub fold_marker_highlight: Option<Highlight>,
 }
 
 // test implementation is basically only used for testing or when softwrap is always disabled
@@ -165,6 +183,8 @@ impl Default for TextFormat {
             viewport_width: 17,
             wrap_indicator_highlight: None,
             soft_wrap_at_text_width: false,
+            fold_marker: Box::from("⋯"),
+            fold_marker_highlight: None,
         }
     }
 }
@@ -259,6 +279,35 @@ impl<'t> DocumentFormatter<'t> {
     }
 
     fn advance_grapheme(&mut self, col: usize, char_pos: usize) -> Option<GraphemeWithSource<'t>> {
+        // if a fold starts right here, draw its marker and skip the hidden
+        // graphemes. The marker carries the hidden char/line counts so the
+        // traversal position jumps past the fold once it is yielded.
+        if let Some(fold) = self.annotations.fold_starting_at(char_pos) {
+            let span = fold.end_char.saturating_sub(char_pos);
+            let mut skipped = 0;
+            let mut lines = 0u32;
+            while skipped < span {
+                match self.graphemes.next() {
+                    Some(grapheme) => {
+                        skipped += grapheme.len_chars();
+                        lines += grapheme.chars().filter(|&c| c == '\n').count() as u32;
+                    }
+                    None => break,
+                }
+            }
+            let marker = GraphemeWithSource::new(
+                self.text_fmt.fold_marker.as_ref().into(),
+                col,
+                self.text_fmt.tab_width,
+                GraphemeSource::Fold {
+                    highlight: self.text_fmt.fold_marker_highlight,
+                    codepoints: skipped as u32,
+                    lines,
+                },
+            );
+            return Some(marker);
+        }
+
         let (grapheme, source) =
             if let Some((grapheme, highlight)) = self.next_inline_annotation_grapheme(char_pos) {
                 (grapheme.into(), GraphemeSource::VirtualText { highlight })
@@ -457,6 +506,11 @@ impl<'t> Iterator for DocumentFormatter<'t> {
         };
 
         self.char_pos += grapheme.doc_chars();
+        // a fold marker hides whole lines; bump the document line position past
+        // them so line numbers and anchors stay correct after the fold
+        if let GraphemeSource::Fold { lines, .. } = grapheme.source {
+            self.line_pos += lines as usize;
+        }
         if !grapheme.is_virtual() {
             self.annotations.process_virtual_text_anchors(&grapheme);
         }

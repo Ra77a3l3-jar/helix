@@ -140,7 +140,9 @@ pub fn render_text(
             overlay_highlighter.advance();
         }
 
-        let grapheme_style = if let GraphemeSource::VirtualText { highlight } = grapheme.source {
+        let grapheme_style = if let GraphemeSource::VirtualText { highlight }
+        | GraphemeSource::Fold { highlight, .. } = grapheme.source
+        {
             let mut style = renderer.text_style;
             if let Some(highlight) = highlight {
                 style = style.patch(theme.highlight(highlight));
