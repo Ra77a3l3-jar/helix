@@ -308,6 +308,31 @@
 ;;Get the path to a document.
 (define editor-document->path helix.editor-document->path)
 
+(provide fold-lines!)
+;;@doc
+;; Fold the lines from header-line to last-line in the current document.
+(define fold-lines! helix.fold-lines!)
+
+(provide unfold-at-char!)
+;;@doc
+;; Remove the fold sitting on this char. Returns #t if it removed one.
+(define unfold-at-char! helix.unfold-at-char!)
+
+(provide unfold-all!)
+;;@doc
+;; Remove every fold in the current document.
+(define unfold-all! helix.unfold-all!)
+
+(provide fold-count)
+;;@doc
+;; How many folds the current document has.
+(define fold-count helix.fold-count)
+
+(provide folds)
+;;@doc
+;; The current document's folds list of (start-char end-char) pairs.
+(define folds helix.folds)
+
 (provide register->value)
 ;;@doc
 ;;Get register value as a list of strings.
