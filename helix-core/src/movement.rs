@@ -38,15 +38,24 @@ pub fn move_horizontally(
     count: usize,
     behaviour: Movement,
     _: &TextFormat,
-    _: &mut TextAnnotations,
+    annotations: &mut TextAnnotations,
 ) -> Range {
     let pos = range.cursor(slice);
 
     // Compute the new position.
-    let new_pos = match dir {
+    let mut new_pos = match dir {
         Direction::Forward => nth_next_grapheme_boundary(slice, pos, count),
         Direction::Backward => nth_prev_grapheme_boundary(slice, pos, count),
     };
+
+    // if we landed inside a fold, hop to its visible edge so h/l skip the
+    // hidden lines instead of crawling through them
+    if let Some(fold) = annotations.fold_at(new_pos) {
+        new_pos = match dir {
+            Direction::Forward => fold.end_char,
+            Direction::Backward => prev_grapheme_boundary(slice, fold.start_char),
+        };
+    }
 
     // Compute the final new range.
     range.put_cursor(slice, new_pos, behaviour == Movement::Extend)

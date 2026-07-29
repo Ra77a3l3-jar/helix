@@ -1529,6 +1529,7 @@ fn load_editor_api(engine: &mut Engine, generate_sources: bool) {
             |cx: &mut Context, header_line: usize, last_line: usize| {
                 let (_view, doc) = current!(cx.editor);
                 doc.fold_lines(header_line, last_line);
+                request_full_redraw(cx);
             },
         )
         .register_fn_with_ctx(
@@ -1536,12 +1537,15 @@ fn load_editor_api(engine: &mut Engine, generate_sources: bool) {
             "unfold-at-char!",
             |cx: &mut Context, char_idx: usize| -> bool {
                 let (_view, doc) = current!(cx.editor);
-                doc.unfold_at(char_idx)
+                let removed = doc.unfold_at(char_idx);
+                request_full_redraw(cx);
+                removed
             },
         )
         .register_fn_with_ctx(CTX, "unfold-all!", |cx: &mut Context| {
             let (_view, doc) = current!(cx.editor);
             doc.clear_folds();
+            request_full_redraw(cx);
         })
         .register_fn_with_ctx(CTX, "fold-count", |cx: &mut Context| -> usize {
             let (_view, doc) = current!(cx.editor);
@@ -2069,6 +2073,20 @@ pub fn present_error_inside_engine_context(cx: &mut Context, engine: &mut Engine
                     ));
                     compositor.replace_or_push("engine", popup);
                 }
+            },
+        ));
+        Ok(call)
+    };
+    cx.jobs.callback(callback);
+}
+
+/// Force a full repaint next frame. A fold change doesn't edit the text, so the
+/// diffing renderer would otherwise leave stale marker cells behind
+fn request_full_redraw(cx: &mut Context) {
+    let callback = async move {
+        let call: job::Callback = Callback::EditorCompositor(Box::new(
+            |_editor: &mut Editor, compositor: &mut Compositor| {
+                compositor.need_full_redraw();
             },
         ));
         Ok(call)

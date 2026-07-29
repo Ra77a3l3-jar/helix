@@ -341,6 +341,11 @@ impl<'a> TextAnnotations<'a> {
             .find(|f| f.start_char < char_idx && char_idx < f.end_char)
     }
 
+    /// The fold covering `char_idx` (start included), outermost first
+    pub(crate) fn fold_at(&self, char_idx: usize) -> Option<Fold> {
+        self.folds.iter().copied().find(|f| f.contains(char_idx))
+    }
+
     pub fn collect_overlay_highlights(&self, char_range: Range<usize>) -> OverlayHighlights {
         let mut highlights = Vec::new();
         self.reset_pos(char_range.start);
