@@ -475,6 +475,9 @@ impl View {
             padding_before_inlay_hints,
             padding_after_inlay_hints,
             styled_inlay_hints,
+            styled_overlays,
+            // painted as render decorations in editor.rs, not text annotations
+            line_backgrounds: _,
         }) = doc.inlay_hints.get(&self.id)
         {
             let type_style = theme.and_then(|t| t.find_highlight("ui.virtual.inlay-hint.type"));
@@ -496,6 +499,10 @@ impl View {
                     .add_inline_annotations(std::slice::from_ref(annotation), *highlight);
             }
             text_annotations.add_inline_annotations(padding_after_inlay_hints, None);
+            // overlays replace or restyle real graphemes, each carries its own style
+            for (overlay, highlight) in styled_overlays {
+                text_annotations.add_overlay(std::slice::from_ref(overlay), *highlight);
+            }
         };
         let config = doc.config.load();
 
