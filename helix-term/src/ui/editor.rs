@@ -121,6 +121,35 @@ impl EditorView {
                 decorations.add_decoration(line_decoration);
             }
 
+            // full-width line backgrounds from Steel plugins
+            if let Some(hints) = doc.inlay_hints(view.id) {
+                if !hints.line_backgrounds.is_empty() {
+                    let text = doc.text();
+                    let len_chars = text.len_chars();
+                    let backgrounds: Vec<(usize, Style)> = hints
+                        .line_backgrounds
+                        .iter()
+                        .filter_map(|(char_idx, hl)| {
+                            let style = theme.highlight((*hl)?);
+                            Some((text.char_to_line((*char_idx).min(len_chars)), style))
+                        })
+                        .collect();
+                    if !backgrounds.is_empty() {
+                        let line_bg = move |renderer: &mut TextRenderer, pos: LinePos| {
+                            for (line, style) in &backgrounds {
+                                if pos.doc_line == *line {
+                                    renderer.set_style(
+                                        Rect::new(inner.x, pos.visual_line, inner.width, 1),
+                                        *style,
+                                    );
+                                }
+                            }
+                        };
+                        decorations.add_decoration(line_bg);
+                    }
+                }
+            }
+
             let syntax_highlighter =
                 Self::doc_syntax_highlighter(doc, view_offset.anchor, inner.height, &loader);
             let mut overlays = Vec::new();

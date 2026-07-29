@@ -1477,6 +1477,8 @@ fn compute_inlay_hints_for_view(
                     padding_before_inlay_hints,
                     padding_after_inlay_hints,
                     styled_inlay_hints: Vec::new(),
+                    styled_overlays: Vec::new(),
+                    line_backgrounds: Vec::new(),
                 },
             );
             doc.inlay_hints_oudated = false;

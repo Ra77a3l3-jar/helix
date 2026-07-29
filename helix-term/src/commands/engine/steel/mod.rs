@@ -4093,6 +4093,10 @@ fn load_misc_api(engine: &mut Engine, generate_sources: bool) {
         .register_fn_with_ctx(CTX, "add-inlay-hint", add_inlay_hint)
         .register_fn_with_ctx(CTX, "add-styled-inlay-hint", add_styled_inlay_hint)
         .register_fn_with_ctx(CTX, "add-styled-line-inlay-hint", add_styled_line_inlay_hint)
+        .register_fn_with_ctx(CTX, "add-overlay!", steel_add_overlay)
+        .register_fn_with_ctx(CTX, "add-highlight!", steel_add_highlight)
+        .register_fn_with_ctx(CTX, "add-line-background!", steel_add_line_background)
+        .register_fn_with_ctx(CTX, "clear-decorations!", steel_clear_decorations)
         .register_fn_with_ctx(CTX, "remove-inlay-hint", remove_inlay_hint)
         .register_fn_with_ctx(CTX, "remove-inlay-hint-by-id", remove_inlay_hint_by_id)
         .register_fn("fuzzy-match", fuzzy_match);
@@ -5628,6 +5632,144 @@ pub fn add_styled_line_inlay_hint(
     };
 
     Ok(add_styled_inlay_hint_impl(cx, char_index, segments))
+}
+
+// make a theme highlight from a style, reusing one for identical styles
+fn ensure_style_highlight(
+    cx: &mut Context,
+    style: Option<helix_view::theme::Style>,
+) -> Option<helix_core::syntax::Highlight> {
+    style.map(|style| {
+        let scope = format!("steel.style.{:?}", style);
+        cx.editor.theme.ensure_highlight(&scope, style)
+    })
+}
+
+// add overlays to the focused view, making a hints snapshot if there isn't one
+fn push_styled_overlays(
+    cx: &mut Context,
+    overlays: Vec<(helix_core::text_annotations::Overlay, Option<helix_core::syntax::Highlight>)>,
+) -> Option<(usize, usize)> {
+    let view_id = cx.editor.tree.focus;
+    if !cx.editor.tree.contains(view_id) {
+        return None;
+    }
+    let view = cx.editor.tree.get(view_id);
+    let doc_id = view.doc;
+    let doc = cx.editor.documents.get_mut(&doc_id)?;
+    let mut new_inlay_hints = doc.inlay_hints(view_id).cloned().unwrap_or_else(|| {
+        let doc_text = doc.text();
+        let len_lines = doc_text.len_lines();
+        let view_height = view.inner_height();
+        let first_visible_line =
+            doc_text.char_to_line(doc.view_offset(view_id).anchor.min(doc_text.len_chars()));
+        let first_line = first_visible_line.saturating_sub(view_height);
+        let last_line = first_visible_line
+            .saturating_add(view_height.saturating_mul(2))
+            .min(len_lines);
+        DocumentInlayHints::empty_with_id(DocumentInlayHintsId {
+            first_line,
+            last_line,
+        })
+    });
+    new_inlay_hints.styled_overlays.extend(overlays);
+    let id = new_inlay_hints.id;
+    doc.set_inlay_hints(view_id, new_inlay_hints);
+    Some((id.first_line, id.last_line))
+}
+
+// add-overlay! swaps the grapheme at char_index for replacement, "" hides it
+pub fn steel_add_overlay(
+    cx: &mut Context,
+    char_index: usize,
+    replacement: SteelString,
+    style: Option<helix_view::theme::Style>,
+) -> Option<(usize, usize)> {
+    let highlight = ensure_style_highlight(cx, style);
+    let overlay = helix_core::text_annotations::Overlay::new(char_index, replacement.to_string());
+    push_styled_overlays(cx, vec![(overlay, highlight)])
+}
+
+// add-highlight! recolors the real text in [start_char, end_char), chars stay
+pub fn steel_add_highlight(
+    cx: &mut Context,
+    start_char: usize,
+    end_char: usize,
+    style: Option<helix_view::theme::Style>,
+) -> Option<(usize, usize)> {
+    let view_id = cx.editor.tree.focus;
+    if !cx.editor.tree.contains(view_id) {
+        return None;
+    }
+    let doc_id = cx.editor.tree.get(view_id).doc;
+    let graphemes: Vec<(usize, String)> = {
+        let doc = cx.editor.documents.get(&doc_id)?;
+        let text = doc.text().slice(..);
+        let len = text.len_chars();
+        (start_char.min(len)..end_char.min(len))
+            .map(|i| (i, text.char(i).to_string()))
+            .collect()
+    };
+    let highlight = ensure_style_highlight(cx, style);
+    let overlays = graphemes
+        .into_iter()
+        .map(|(i, g)| (helix_core::text_annotations::Overlay::new(i, g), highlight))
+        .collect();
+    push_styled_overlays(cx, overlays)
+}
+
+// add-line-background! paints a full-width background behind the line at char_index
+pub fn steel_add_line_background(
+    cx: &mut Context,
+    char_index: usize,
+    style: Option<helix_view::theme::Style>,
+) -> Option<(usize, usize)> {
+    let highlight = ensure_style_highlight(cx, style);
+    let view_id = cx.editor.tree.focus;
+    if !cx.editor.tree.contains(view_id) {
+        return None;
+    }
+    let view = cx.editor.tree.get(view_id);
+    let doc_id = view.doc;
+    let doc = cx.editor.documents.get_mut(&doc_id)?;
+    let mut new_inlay_hints = doc.inlay_hints(view_id).cloned().unwrap_or_else(|| {
+        let doc_text = doc.text();
+        let len_lines = doc_text.len_lines();
+        let view_height = view.inner_height();
+        let first_visible_line =
+            doc_text.char_to_line(doc.view_offset(view_id).anchor.min(doc_text.len_chars()));
+        let first_line = first_visible_line.saturating_sub(view_height);
+        let last_line = first_visible_line
+            .saturating_add(view_height.saturating_mul(2))
+            .min(len_lines);
+        DocumentInlayHints::empty_with_id(DocumentInlayHintsId {
+            first_line,
+            last_line,
+        })
+    });
+    new_inlay_hints
+        .line_backgrounds
+        .push((char_index, highlight));
+    let id = new_inlay_hints.id;
+    doc.set_inlay_hints(view_id, new_inlay_hints);
+    Some((id.first_line, id.last_line))
+}
+
+// clear-decorations! drops every overlay and styled hint in the focused view
+pub fn steel_clear_decorations(cx: &mut Context) {
+    let view_id = cx.editor.tree.focus;
+    if !cx.editor.tree.contains(view_id) {
+        return;
+    }
+    let doc_id = cx.editor.tree.get(view_id).doc;
+    if let Some(doc) = cx.editor.documents.get_mut(&doc_id) {
+        if let Some(mut hints) = doc.inlay_hints(view_id).cloned() {
+            hints.styled_inlay_hints.clear();
+            hints.styled_overlays.clear();
+            hints.line_backgrounds.clear();
+            doc.set_inlay_hints(view_id, hints);
+        }
+    }
 }
 
 fn add_styled_inlay_hint_impl(

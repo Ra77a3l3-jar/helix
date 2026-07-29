@@ -324,6 +324,41 @@
 ;;
 (define add-styled-line-inlay-hint helix.add-styled-line-inlay-hint)
 
+(provide add-overlay!)
+;;@doc
+;; Swap the grapheme at char-index for `replacement`, drawn with `style` (or #f
+;; for the default). Pass "" to hide the character
+;;
+;;```scheme
+;;(add-overlay! char-index replacement style) -> (list int? int?)
+;;```
+(define add-overlay! helix.add-overlay!)
+
+(provide add-highlight!)
+;;@doc
+;; Recolor the real text in [start-char end-char) with `style`, the characters
+;; stay as they are
+;;
+;;```scheme
+;;(add-highlight! start-char end-char style) -> (list int? int?)
+;;```
+(define add-highlight! helix.add-highlight!)
+
+(provide add-line-background!)
+;;@doc
+;; Paint a full-width background behind the line that holds `char-index`, drawn
+;; with `style`
+;;
+;;```scheme
+;;(add-line-background! char-index style) -> (list int? int?)
+;;```
+(define add-line-background! helix.add-line-background!)
+
+(provide clear-decorations!)
+;;@doc
+;; Remove every overlay and styled hint in the focused view
+(define clear-decorations! helix.clear-decorations!)
+
 (provide remove-inlay-hint)
 ;;@doc
 ;;

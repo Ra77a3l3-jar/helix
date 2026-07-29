@@ -95,6 +95,10 @@ impl Display for Grapheme<'_> {
 
 #[must_use]
 pub fn grapheme_width(g: &str) -> usize {
+    if g.is_empty() {
+        // an empty overlay is concealed so it takes no space
+        return 0;
+    }
     if g.as_bytes()[0] <= 127 {
         // Fast-path ascii.
         // Point 1: theoretically, ascii control characters should have zero

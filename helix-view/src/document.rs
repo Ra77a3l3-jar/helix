@@ -308,6 +308,14 @@ pub struct DocumentInlayHints {
     /// rendered as its own annotation layer so the segments of a single
     /// hint can each have their own colors.
     pub styled_inlay_hints: Vec<(InlineAnnotation, Option<syntax::Highlight>)>,
+
+    /// Overlays that replace or recolor real graphemes, used by Steel plugins
+    /// to hide syntax and restyle text. Each entry carries its own style
+    pub styled_overlays: Vec<(Overlay, Option<syntax::Highlight>)>,
+
+    /// Full-width line backgrounds keyed by any char on the target line, used
+    /// by Steel plugins to paint behind a whole line
+    pub line_backgrounds: Vec<(usize, Option<syntax::Highlight>)>,
 }
 
 impl DocumentInlayHints {
@@ -321,6 +329,8 @@ impl DocumentInlayHints {
             padding_before_inlay_hints: Vec::new(),
             padding_after_inlay_hints: Vec::new(),
             styled_inlay_hints: Vec::new(),
+            styled_overlays: Vec::new(),
+            line_backgrounds: Vec::new(),
         }
     }
 }
@@ -1610,6 +1620,8 @@ impl Document {
                 padding_before_inlay_hints,
                 padding_after_inlay_hints,
                 styled_inlay_hints,
+                styled_overlays,
+                line_backgrounds,
             } = text_annotation;
 
             apply_inlay_hint_changes(padding_before_inlay_hints);
@@ -1621,6 +1633,16 @@ impl Document {
                 styled_inlay_hints
                     .iter_mut()
                     .map(|(annotation, _)| (&mut annotation.char_idx, Assoc::After)),
+            );
+            changes.update_positions(
+                styled_overlays
+                    .iter_mut()
+                    .map(|(overlay, _)| (&mut overlay.char_idx, Assoc::After)),
+            );
+            changes.update_positions(
+                line_backgrounds
+                    .iter_mut()
+                    .map(|(char_idx, _)| (char_idx, Assoc::After)),
             );
         }
 
