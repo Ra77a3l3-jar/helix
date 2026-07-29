@@ -2458,7 +2458,7 @@ impl Document {
             wrap_indicator_highlight: theme
                 .and_then(|theme| theme.find_highlight("ui.virtual.wrap")),
             soft_wrap_at_text_width,
-            fold_marker: "⋯".into(),
+            fold_marker: " ... ".into(),
             fold_marker_highlight: theme.and_then(|theme| theme.find_highlight("ui.virtual.fold")),
         }
     }
@@ -2538,8 +2538,14 @@ impl Document {
             return;
         }
         let start_char = helix_core::fold::line_end_char(text, header_line);
-        // stop at the start of the last line so its closing bracket still shows
-        let end_char = text.line_to_char(last_line);
+        // end at the last line's first non-blank char so its closing bracket
+        // shows but the leading indent is hidden
+        let last_line_start = text.line_to_char(last_line);
+        let indent = text
+            .chars_at(last_line_start)
+            .take_while(|&c| c == ' ' || c == '\t')
+            .count();
+        let end_char = last_line_start + indent;
         self.folds
             .insert(helix_core::fold::Fold::new(start_char, end_char));
     }

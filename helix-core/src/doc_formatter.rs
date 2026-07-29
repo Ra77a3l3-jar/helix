@@ -194,6 +194,16 @@ impl Default for TextFormat {
     }
 }
 
+/// A fold marker emitted one cell at a time; the hidden char/line counts are
+/// attached to its final cell
+#[derive(Debug)]
+struct FoldMarkerGraphemes<'t> {
+    graphemes: Graphemes<'t>,
+    highlight: Option<Highlight>,
+    codepoints: u32,
+    lines: u32,
+}
+
 #[derive(Debug)]
 pub struct DocumentFormatter<'t> {
     text_fmt: &'t TextFormat,
@@ -216,6 +226,9 @@ pub struct DocumentFormatter<'t> {
     eol_annotation_anchor: Option<usize>,
     /// Row advance deferred until the line end annotations are emitted
     pending_eol_row_advance: bool,
+
+    /// A fold marker emitted one cell at a time (see next_fold_marker_grapheme)
+    fold_marker_graphemes: Option<FoldMarkerGraphemes<'t>>,
 
     // softwrap specific
     /// The indentation of the current line
@@ -273,6 +286,7 @@ impl<'t> DocumentFormatter<'t> {
             text,
             eol_annotation_anchor: None,
             pending_eol_row_advance: false,
+            fold_marker_graphemes: None,
         }
     }
 
@@ -302,6 +316,32 @@ impl<'t> DocumentFormatter<'t> {
         }
     }
 
+    /// Yield the next cell of a fold marker mid-emission. Each grapheme is its
+    /// own cell so a multi-char marker like `" ... "` draws correctly; the last
+    /// cell carries the hidden char/line counts, the rest are virtual text
+    fn next_fold_marker_grapheme(&mut self, col: usize) -> Option<GraphemeWithSource<'t>> {
+        let marker = self.fold_marker_graphemes.as_mut()?;
+        let grapheme = marker.graphemes.next()?;
+        let is_last = marker.graphemes.clone().next().is_none();
+        let source = if is_last {
+            GraphemeSource::Fold {
+                highlight: marker.highlight,
+                codepoints: marker.codepoints,
+                lines: marker.lines,
+            }
+        } else {
+            GraphemeSource::VirtualText {
+                highlight: marker.highlight,
+            }
+        };
+        let grapheme =
+            GraphemeWithSource::new(grapheme.into(), col, self.text_fmt.tab_width, source);
+        if is_last {
+            self.fold_marker_graphemes = None;
+        }
+        Some(grapheme)
+    }
+
     fn advance_grapheme(&mut self, col: usize, char_pos: usize) -> Option<GraphemeWithSource<'t>> {
         // drain the annotations of an already emitted line end
         if let Some(anchor) = self.eol_annotation_anchor {
@@ -318,9 +358,12 @@ impl<'t> DocumentFormatter<'t> {
             self.eol_annotation_anchor = None;
         }
 
-        // if a fold starts right here, draw its marker and skip the hidden
-        // graphemes. The marker carries the hidden char/line counts so the
-        // traversal position jumps past the fold once it is yielded.
+        // keep draining a marker started on a previous call
+        if let Some(grapheme) = self.next_fold_marker_grapheme(col) {
+            return Some(grapheme);
+        }
+
+        // a fold starts here: skip the hidden graphemes, then emit its marker
         if let Some(fold) = self.annotations.fold_starting_at(char_pos) {
             let span = fold.end_char.saturating_sub(char_pos);
             let mut skipped = 0;
@@ -334,17 +377,13 @@ impl<'t> DocumentFormatter<'t> {
                     None => break,
                 }
             }
-            let marker = GraphemeWithSource::new(
-                self.text_fmt.fold_marker.as_ref().into(),
-                col,
-                self.text_fmt.tab_width,
-                GraphemeSource::Fold {
-                    highlight: self.text_fmt.fold_marker_highlight,
-                    codepoints: skipped as u32,
-                    lines,
-                },
-            );
-            return Some(marker);
+            self.fold_marker_graphemes = Some(FoldMarkerGraphemes {
+                graphemes: UnicodeSegmentation::graphemes(self.text_fmt.fold_marker.as_ref(), true),
+                highlight: self.text_fmt.fold_marker_highlight,
+                codepoints: skipped as u32,
+                lines,
+            });
+            return self.next_fold_marker_grapheme(col);
         }
 
         // annotations anchored at a line end render after it so a cursor
