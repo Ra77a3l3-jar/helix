@@ -1351,7 +1351,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19753d40da53d0ec41604750eeb969097a90fb2d7f7992730d904541c04e2c19"
 dependencies = [
  "bstr",
- "hashbrown 0.17.1",
+ "hashbrown 0.15.5",
 ]
 
 [[package]]
@@ -2357,9 +2357,9 @@ dependencies = [
 
 [[package]]
 name = "im-lists"
-version = "0.12.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8490eb8daae746b8d5ba6f95d7aec634cd05cf687723ce62e4e3c6886f2a8030"
+checksum = "efa84651d82cf312cc1d1f1acf609debffbd672c13ae6c25f05b6b0e864c3290"
 dependencies = [
  "allocator-api2",
  "generic_singleton",
@@ -3634,8 +3634,8 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "steel-core"
-version = "0.8.2"
-source = "git+https://github.com/mattwparas/steel.git#dec633b908afeafeaf62bab457a92e2bf873745a"
+version = "0.8.3"
+source = "git+https://github.com/mattwparas/steel.git#11a57adcf42c22733463c59b1f44ec49eb7043bc"
 dependencies = [
  "abi_stable",
  "anyhow",
@@ -3693,8 +3693,8 @@ dependencies = [
 
 [[package]]
 name = "steel-derive"
-version = "0.8.2"
-source = "git+https://github.com/mattwparas/steel.git#dec633b908afeafeaf62bab457a92e2bf873745a"
+version = "0.8.3"
+source = "git+https://github.com/mattwparas/steel.git#11a57adcf42c22733463c59b1f44ec49eb7043bc"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3703,16 +3703,16 @@ dependencies = [
 
 [[package]]
 name = "steel-doc"
-version = "0.8.2"
-source = "git+https://github.com/mattwparas/steel.git#dec633b908afeafeaf62bab457a92e2bf873745a"
+version = "0.8.3"
+source = "git+https://github.com/mattwparas/steel.git#11a57adcf42c22733463c59b1f44ec49eb7043bc"
 dependencies = [
  "steel-core",
 ]
 
 [[package]]
 name = "steel-gen"
-version = "0.8.2"
-source = "git+https://github.com/mattwparas/steel.git#dec633b908afeafeaf62bab457a92e2bf873745a"
+version = "0.8.3"
+source = "git+https://github.com/mattwparas/steel.git#11a57adcf42c22733463c59b1f44ec49eb7043bc"
 dependencies = [
  "codegen",
  "serde",
@@ -3735,8 +3735,8 @@ dependencies = [
 
 [[package]]
 name = "steel-parser"
-version = "0.8.2"
-source = "git+https://github.com/mattwparas/steel.git#dec633b908afeafeaf62bab457a92e2bf873745a"
+version = "0.8.3"
+source = "git+https://github.com/mattwparas/steel.git#11a57adcf42c22733463c59b1f44ec49eb7043bc"
 dependencies = [
  "compact_str",
  "dashmap",
@@ -3756,8 +3756,8 @@ dependencies = [
 
 [[package]]
 name = "steel-quickscope"
-version = "0.3.2"
-source = "git+https://github.com/mattwparas/steel.git#dec633b908afeafeaf62bab457a92e2bf873745a"
+version = "0.3.3"
+source = "git+https://github.com/mattwparas/steel.git#11a57adcf42c22733463c59b1f44ec49eb7043bc"
 dependencies = [
  "indexmap 2.14.0",
  "smallvec",
@@ -3765,8 +3765,8 @@ dependencies = [
 
 [[package]]
 name = "steel-rc"
-version = "0.8.2"
-source = "git+https://github.com/mattwparas/steel.git#dec633b908afeafeaf62bab457a92e2bf873745a"
+version = "0.8.3"
+source = "git+https://github.com/mattwparas/steel.git#11a57adcf42c22733463c59b1f44ec49eb7043bc"
 dependencies = [
  "dashmap",
  "parking_lot",
