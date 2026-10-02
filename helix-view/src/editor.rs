@@ -437,8 +437,6 @@ pub struct Config {
     /// Whether or not to use steel for configuration. Defaults to `true`. If set to `false`,
     /// the steel engine will not be initialized.
     pub enable_steel: bool,
-    /// Whether to implicitly trust every workspace or not
-    pub insecure: bool,
     /// Workspace-trust configuration.
     pub workspace_trust: WorkspaceTrustConfig,
 }
@@ -682,8 +680,11 @@ pub struct SearchConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct StatusLineConfig {
+    #[serde(serialize_with = "serialize_status_line_elements")]
     pub left: Vec<StatusLineElement>,
+    #[serde(serialize_with = "serialize_status_line_elements")]
     pub center: Vec<StatusLineElement>,
+    #[serde(serialize_with = "serialize_status_line_elements")]
     pub right: Vec<StatusLineElement>,
     pub separator: String,
     pub mode: ModeConfig,
@@ -715,6 +716,33 @@ impl Default for StatusLineConfig {
             mode: ModeConfig::default(),
             diagnostics: vec![Severity::Warning, Severity::Error],
             workspace_diagnostics: vec![Severity::Warning, Severity::Error],
+        }
+    }
+}
+
+fn serialize_status_line_elements<S>(
+    elements: &[StatusLineElement],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.collect_seq(elements.iter().filter(|element| !element.is_custom()))
+}
+
+impl StatusLineConfig {
+    pub fn restore_custom_elements(&mut self, previous: &StatusLineConfig, key: &str) {
+        let targets =
+            |list: &str| key == "statusline" || key.starts_with(&format!("statusline.{list}"));
+
+        if !targets("left") {
+            self.left = previous.left.clone();
+        }
+        if !targets("center") {
+            self.center = previous.center.clone();
+        }
+        if !targets("right") {
+            self.right = previous.right.clone();
         }
     }
 }
@@ -815,6 +843,17 @@ pub enum StatusLineElement {
     #[cfg(feature = "steel")]
     #[serde(skip)]
     Custom(crate::extension::steel_implementations::CustomStatusElement),
+}
+
+impl StatusLineElement {
+    pub fn is_custom(&self) -> bool {
+        #[cfg(feature = "steel")]
+        if let Self::Custom(_) = self {
+            return true;
+        }
+
+        false
+    }
 }
 
 // Cursor shape is read and used on every rendered frame and so needs
@@ -1258,7 +1297,6 @@ impl Default for Config {
             enable_steel: true,
             #[cfg(not(feature = "steel"))]
             enable_steel: false,
-            insecure: false,
             workspace_trust: WorkspaceTrustConfig::default(),
         }
     }

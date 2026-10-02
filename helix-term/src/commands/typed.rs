@@ -2298,12 +2298,16 @@ fn set_option(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> a
     } else {
         arg.parse().map_err(field_error)?
     };
-    let config = serde_json::from_value(config).map_err(field_error)?;
+    let mut config: helix_view::editor::Config =
+        serde_json::from_value(config).map_err(field_error)?;
+    config
+        .statusline
+        .restore_custom_elements(&cx.editor.config().statusline, key);
 
     cx.editor
         .config_events
         .0
-        .send(ConfigEvent::Update(config))?;
+        .send(ConfigEvent::Update(Box::new(config)))?;
     Ok(())
 }
 
@@ -2392,13 +2396,16 @@ fn toggle_option(
     };
 
     let status = format!("'{key}' is now set to {value}");
-    let config = serde_json::from_value(config)
+    let mut config: helix_view::editor::Config = serde_json::from_value(config)
         .map_err(|err| anyhow::anyhow!("Failed to parse config: {err}"))?;
+    config
+        .statusline
+        .restore_custom_elements(&cx.editor.config().statusline, key);
 
     cx.editor
         .config_events
         .0
-        .send(ConfigEvent::Update(config))?;
+        .send(ConfigEvent::Update(Box::new(config)))?;
     cx.editor.set_status(status);
     Ok(())
 }

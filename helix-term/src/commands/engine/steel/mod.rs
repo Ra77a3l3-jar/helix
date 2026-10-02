@@ -983,9 +983,13 @@ fn dynamic_set_option(
     let field_error = move |_| anyhow::anyhow!("Could not parse field `{}`", cloned);
     *jvalue = serde_json::Value::try_from(value)?;
 
-    let config = serde_json::from_value(config).map_err(field_error)?;
+    let mut config: helix_view::editor::Config =
+        serde_json::from_value(config).map_err(field_error)?;
 
     let mut new_config = configuration.load_config();
+    config
+        .statusline
+        .restore_custom_elements(&new_config.editor.statusline, &key);
     new_config.editor = config;
 
     configuration.store_config(new_config);
