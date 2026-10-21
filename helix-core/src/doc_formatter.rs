@@ -630,9 +630,11 @@ impl<'t> Iterator for DocumentFormatter<'t> {
             } else {
                 // move to end of newline char
                 self.visual_pos.col += 1;
-                let virtual_lines =
-                    self.annotations
-                        .virtual_lines_at(self.char_pos, self.visual_pos, self.line_pos);
+                let virtual_lines = self.annotations.virtual_lines_at(
+                    self.char_pos,
+                    self.visual_pos,
+                    self.line_pos,
+                );
                 self.visual_pos.row += 1 + virtual_lines;
                 self.visual_pos.col = 0;
                 if !grapheme.is_virtual() {

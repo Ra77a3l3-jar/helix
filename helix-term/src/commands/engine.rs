@@ -6,7 +6,10 @@ use helix_view::{document::Mode, input::KeyEvent};
 #[cfg(unix)]
 use termina::{EventReader, Terminal};
 
-use std::{borrow::Cow, sync::Arc};
+use std::{
+    borrow::Cow,
+    sync::{Arc, OnceLock},
+};
 
 use crate::{
     application::TerminalBackend,
@@ -40,8 +43,7 @@ const DEFAULT_PLUGIN_PRECEDENCE: &[PluginSystemTypes] = &[
     PluginSystemTypes::None(NoEngine),
 ];
 
-static PLUGIN_PRECEDENCE: once_cell::sync::OnceCell<Vec<PluginSystemTypes>> =
-    once_cell::sync::OnceCell::new();
+static PLUGIN_PRECEDENCE: OnceLock<Vec<PluginSystemTypes>> = OnceLock::new();
 
 fn plugins() -> impl Iterator<Item = &'static PluginSystemTypes> {
     PLUGIN_PRECEDENCE.get().unwrap().iter()

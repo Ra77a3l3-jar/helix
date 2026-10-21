@@ -13,7 +13,10 @@ pub struct Fold {
 
 impl Fold {
     pub fn new(start_char: usize, end_char: usize) -> Self {
-        Fold { start_char, end_char }
+        Fold {
+            start_char,
+            end_char,
+        }
     }
 
     /// Is this char inside the hidden part?
@@ -104,9 +107,13 @@ impl Folds {
     /// After an edit moves things around, drop the folds that got squished to
     /// nothing and sort again.
     pub fn prune(&mut self, text_len: usize) {
-        self.folds.retain(|f| !f.is_empty() && f.start_char < text_len);
         self.folds
-            .sort_by(|a, b| a.start_char.cmp(&b.start_char).then(b.end_char.cmp(&a.end_char)));
+            .retain(|f| !f.is_empty() && f.start_char < text_len);
+        self.folds.sort_by(|a, b| {
+            a.start_char
+                .cmp(&b.start_char)
+                .then(b.end_char.cmp(&a.end_char))
+        });
     }
 }
 

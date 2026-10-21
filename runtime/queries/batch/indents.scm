@@ -1,0 +1,7 @@
+[
+  (parenthesized)
+] @indent
+
+[
+  ")"
+] @outdent
